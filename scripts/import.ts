@@ -253,7 +253,10 @@ async function main(): Promise<void> {
   console.log('Done!');
 }
 
-main().catch((error) => {
-  console.error('Import failed:', error);
-  process.exit(1);
-});
+// Only run main when executed directly (not when imported by tests)
+if (process.argv[1]?.includes('import.ts') || process.argv[1]?.includes('import.js')) {
+  main().catch((error) => {
+    console.error('Import failed:', error);
+    process.exit(1);
+  });
+}
