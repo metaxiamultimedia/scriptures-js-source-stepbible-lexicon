@@ -1,6 +1,6 @@
 {
   "name": "@metaxia/scriptures-source-stepbible-lexicon",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hebrew and Greek lexicon data from STEPBible for @metaxia/scriptures. Includes TBESH (Hebrew/BDB), TBESG (Greek/Abbott-Smith), and TFLSJ (Greek/LSJ) lexicons with Strong's number lookup.",
   "type": "module",
   "main": "./dist/index.js",
@@ -54,7 +54,7 @@
     "@metaxia/scriptures-core": ">=0.1.0"
   },
   "devDependencies": {
-    "@metaxia/scriptures-core": "^0.1.0",
+    "@metaxia/scriptures-core": "^0.1.1",
     "@types/node": "^20.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
