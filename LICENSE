@@ -40,3 +40,8 @@ See: https://creativecommons.org/licenses/by/4.0/
 
 Attribution:
 Lexicon data from STEPBible.org by Tyndale House, Cambridge.
+
+Modifications:
+The original TSV data has been converted to JSON format and indexed by
+Strong's numbers. The lexical content (definitions, glosses, lemmas) is
+unchanged.
