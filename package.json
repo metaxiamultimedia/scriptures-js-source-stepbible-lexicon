@@ -1,6 +1,6 @@
 {
   "name": "@metaxia/scriptures-source-stepbible-lexicon",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "description": "Hebrew and Greek lexicon data from STEPBible for @metaxia/scriptures. Includes TBESH (Hebrew/BDB), TBESG (Greek/Abbott-Smith), and TFLSJ (Greek/LSJ) lexicons with Strong's number lookup.",
   "type": "module",
   "publishConfig": {
@@ -44,7 +44,7 @@
     "scriptures"
   ],
   "author": "Benjamin Plunkert",
-  "license": "MIT",
+  "license": "(MIT AND CC-BY-4.0)",
   "repository": {
     "type": "git",
     "url": "https://github.com/metaxiamultimedia/scriptures-js-source-stepbible-lexicon"

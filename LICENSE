@@ -1,4 +1,9 @@
-MIT License
+This package is dual-licensed:
+- Code: MIT License (below)
+- Data: CC BY 4.0 (the lexical data is not relicensed)
+
+--------------------------------------------------------------------------------
+MIT License (code)
 
 Copyright (c) 2024 Benjamin Plunkert / Metaxia Multimedia
 
@@ -20,28 +25,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
+--------------------------------------------------------------------------------
+CC BY 4.0 (data)
 
-LEXICON DATA LICENSE
+The lexical data (TBESH, TBESG, TFLSJ) is from STEP Bible, licensed under
+Creative Commons Attribution 4.0 International (CC BY 4.0).
 
-The lexicon data included in this package (in the data/ directory) is sourced
-from STEPBible-Data (https://github.com/STEPBible/STEPBible-Data) and is
-licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+Source: https://github.com/STEPBible/STEPBible-Data
+License: https://creativecommons.org/licenses/by/4.0/
 
-You are free to:
-- Share — copy and redistribute the material in any medium or format
-- Adapt — remix, transform, and build upon the material for any purpose
+Required attribution: STEP Bible (https://www.stepbible.org), Tyndale House,
+Cambridge, CC BY 4.0.
 
-Under the following terms:
-- Attribution — You must give appropriate credit, provide a link to the
-  license, and indicate if changes were made.
-
-See: https://creativecommons.org/licenses/by/4.0/
-
-Attribution:
-Lexicon data from STEPBible.org by Tyndale House, Cambridge.
-
-Modifications:
-The original TSV data has been converted to JSON format and indexed by
-Strong's numbers. The lexical content (definitions, glosses, lemmas) is
-unchanged.
+Modifications: converted from the upstream TSV to JSON and restructured for
+Strong's-number lookup; lexical content is otherwise unchanged.
