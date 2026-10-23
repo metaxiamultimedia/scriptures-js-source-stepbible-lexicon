@@ -1,5 +1,7 @@
 # @metaxia/scriptures-source-stepbible-lexicon
 
+It is a data source for [GematriaBible.com](https://gematriabible.com) — an interlinear Bible with gematria values and Strong's numbers.
+
 Hebrew and Greek lexicon data from [STEPBible](https://www.stepbible.org/) for use with [@metaxia/scriptures](https://github.com/metaxiamultimedia/scriptures-js).
 
 ## Features
