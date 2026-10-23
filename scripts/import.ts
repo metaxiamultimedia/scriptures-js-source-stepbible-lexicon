@@ -105,6 +105,34 @@ export function isPrimaryMeaning(dStrong: string | undefined): boolean {
 }
 
 /**
+ * True when a row is a proper name spelled differently from every other row
+ * of the same extended Strong's number: a name homograph filed under another
+ * lexeme. TBESH files the name Heglam (הֶגְלָם, "H1540G = a Name of", unified
+ * H1617J) under H1540 next to the verb galah (גָּלָה, H1540H-K). The G suffix
+ * is only the first letter of STEPBible's disambiguation series, not a mark of
+ * the main sense, so the name must not stand for the number.
+ */
+export function isNameHomograph(row: LexiconEntry, rows: LexiconEntry[]): boolean {
+  if (rows.length < 2) return false;
+  if (!/=\s*a Name of\b/i.test(row.strongsDisambiguated ?? '')) return false;
+  return rows.every((other) => other === row || other.lemma !== row.lemma);
+}
+
+/**
+ * Pick the one entry stored for an extended Strong's number from all of its
+ * TBESH/TBESG rows (in file order).
+ *
+ * The first primary-meaning row (G suffix in dStrong) wins, else the first
+ * row. A proper-name homograph (isNameHomograph) is passed over when another
+ * row exists.
+ */
+export function selectEntry(rows: LexiconEntry[]): LexiconEntry {
+  const candidates = rows.filter((row) => !isNameHomograph(row, rows));
+  const pool = candidates.length > 0 ? candidates : rows;
+  return pool.find((row) => isPrimaryMeaning(row.strongsDisambiguated)) ?? pool[0];
+}
+
+/**
  * Parse STEPBible TSV file into lexicon entries.
  *
  * TSV columns (may vary slightly by file):
@@ -122,6 +150,7 @@ function parseLexiconTsv(
   lexiconId: string
 ): Record<string, LexiconEntry> {
   const entries: Record<string, LexiconEntry> = {};
+  const groups: Record<string, LexiconEntry[]> = {};
   const lines = content.split('\n');
 
   let dataStarted = false;
@@ -182,18 +211,11 @@ function parseLexiconTsv(
       entry.strongsDisambiguated = entry.strongsDisambiguated.replace(/\s*=\s*$/, '').trim();
     }
 
-    // Prioritize primary meanings (G suffix in dStrong) over secondary meanings.
-    // STEPBible uses suffixes like G (primary), H, I, J... for disambiguated entries.
-    // Only overwrite an existing entry if:
-    // 1. No entry exists yet, OR
-    // 2. The new entry is a primary meaning (G suffix) and the existing one isn't
-    const existingEntry = entries[eStrong];
-    const newIsPrimary = isPrimaryMeaning(entry.strongsDisambiguated);
-    const existingIsPrimary = existingEntry && isPrimaryMeaning(existingEntry.strongsDisambiguated);
+    (groups[eStrong] ||= []).push(entry);
+  }
 
-    if (!existingEntry || (newIsPrimary && !existingIsPrimary)) {
-      entries[eStrong] = entry;
-    }
+  for (const [eStrong, rows] of Object.entries(groups)) {
+    entries[eStrong] = selectEntry(rows);
   }
 
   return entries;

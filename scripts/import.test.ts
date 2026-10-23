@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { isPrimaryMeaning } from './import.js';
+import { isPrimaryMeaning, isNameHomograph, selectEntry } from './import.js';
+import type { LexiconEntry } from '@metaxia/scriptures-core';
 import { parseLemma, lookupTransliteration } from '../src/source.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,6 +40,50 @@ describe('isPrimaryMeaning', () => {
   });
 });
 
+const row = (dStrong: string, lemma: string, gloss: string): LexiconEntry => ({
+  source: 'stepbible-tbesh',
+  strongsExtended: dStrong.slice(0, 5),
+  strongsDisambiguated: dStrong,
+  lemma,
+  gloss,
+});
+
+describe('selectEntry', () => {
+  // TBESH rows for H1540, in file order.
+  const h1540 = [
+    row('H1540G = a Name of', 'הֶגְלָם', 'Heglam'),
+    row('H1540H', 'גָּלָה', 'to reveal: reveal'),
+    row('H1540I = a Meaning of', 'גָּלָה', 'to reveal: uncover'),
+  ];
+
+  it('passes over a proper-name homograph spelled differently from the other rows', () => {
+    expect(isNameHomograph(h1540[0], h1540)).toBe(true);
+    expect(isNameHomograph(h1540[1], h1540)).toBe(false);
+    expect(selectEntry(h1540).gloss).toBe('to reveal: reveal');
+  });
+
+  it('keeps a name row that shares its spelling with the other rows', () => {
+    // H0430: "God" is "a Name of" H3068G but spelled like the other rows.
+    const h0430 = [
+      row('H0430G = a Name of', 'אֱלֹהִים', 'God'),
+      row('H0430H = a Part of', 'אֱלֹהִים', '(LORD)-Elohe'),
+    ];
+    expect(isNameHomograph(h0430[0], h0430)).toBe(false);
+    expect(selectEntry(h0430).gloss).toBe('God');
+  });
+
+  it('keeps a lone name row', () => {
+    const only = [row('H1540G = a Name of', 'הֶגְלָם', 'Heglam')];
+    expect(selectEntry(only).gloss).toBe('Heglam');
+  });
+
+  it('prefers the first primary (G) row, else the first row', () => {
+    const rows = [row('H7225H = a Meaning of', 'רֵאשִׁית', 'first: best'), row('H7225G', 'רֵאשִׁית', 'first: beginning')];
+    expect(selectEntry(rows).gloss).toBe('first: beginning');
+    expect(selectEntry([row('H0559', 'אָמַר', 'to say')]).gloss).toBe('to say');
+  });
+});
+
 describe('imported lexicon data - primary meaning prioritization', () => {
   it('TBESH (Hebrew) has correct primary glosses for common words', async () => {
     const content = await readFile(join(DATA_DIR, 'stepbible-tbesh.json'), 'utf-8');
@@ -64,6 +109,13 @@ describe('imported lexicon data - primary meaning prioritization', () => {
     // H7200 (ra'ah) should be "to see: see", not "Provider"
     expect(data['H7200']).toBeDefined();
     expect(data['H7200'].gloss).toBe('to see: see');
+
+    // H1540 (galah) should be the verb, not the name homograph Heglam
+    expect(data['H1540'].gloss).toBe('to reveal: reveal');
+    expect(data['H1540'].lemma.normalize('NFC')).toBe('גָּלָה'.normalize('NFC'));
+
+    // H8077a (shemamah) should be "devastation", not the name "Desolate"
+    expect(data['H8077a'].gloss).toBe('devastation');
   });
 
   it('TBESH entries with primary meanings have G suffix in disambiguated field', async () => {

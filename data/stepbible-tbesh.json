@@ -17690,13 +17690,13 @@
   "H1540": {
     "source": "stepbible-tbesh",
     "strongsExtended": "H1540",
-    "strongsDisambiguated": "H1540G = a Name of",
-    "strongsUnified": "H1617J",
-    "lemma": "הֶגְלָם",
+    "strongsDisambiguated": "H1540H",
+    "strongsUnified": "H1540H",
+    "lemma": "גָּלָה",
     "transliteration": "ga.lah",
     "morphology": "H:V",
-    "gloss": "Heglam",
-    "definition": "A man of the tribe of Benjamin living before Israel's Monarchy, only mentioned at 1Ch.8.7; <br> son of: Ehud (H0164); <br> brother of: Naaman (H5283J), Ahijah (H0281K), Uzza (H5798H) and Ahihud (H0284); also called Heglam (KJV: removed; NIV: deported) at 1Ch.8.7; <BR>Another name of <i>ge.ra</i> (גֵּרָא Gera H1617J)<BR>to reveal oneself"
+    "gloss": "to reveal: reveal",
+    "definition": ": reveal[information]<br>1) to uncover, remove<br>1a) (Qal)<br>1a1) to uncover<br>1a2) to remove, depart<br>1a3) to go into exile<br>1b) (Niphal)<br>1b1) (reflexive)<br>1b1a) to uncover oneself<br>1b1b) to discover or show oneself<br>1b1c) to reveal himself (of God)<br>1b2) (passive)<br>1b2a) to be uncovered<br>1b2b) to be disclosed, be discovered<br>1b2c) to be revealed<br>1b3) to be removed<br>1c) (Piel)<br>1c1) to uncover (nakedness)<br>1c1a) nakedness<br>1c1b) general<br>1c2) to disclose, discover, lay bare<br>1c3) to make known, show, reveal<br>1d) (Pual) to be uncovered<br>1e) (Hiphil) to carry away into exile, take into exile<br>1f) (Hophal) to be taken into exile<br>1g) (Hithpael)<br>1g1) to be uncovered<br>1g2) to reveal oneself"
   },
   "H1541": {
     "source": "stepbible-tbesh",
@@ -95273,13 +95273,13 @@
   "H8077a": {
     "source": "stepbible-tbesh",
     "strongsExtended": "H8077a",
-    "strongsDisambiguated": "H8077G = a Name of",
-    "strongsUnified": "H3389",
-    "lemma": "שִֽׁמְמָה",
-    "transliteration": "shi.me.mah",
+    "strongsDisambiguated": "H8077A",
+    "strongsUnified": "H8077A",
+    "lemma": "שְׁמָמָה",
+    "transliteration": "she.ma.mah",
     "morphology": "H:N-F",
-    "gloss": "Desolate",
-    "definition": "devastation, waste, desolation<BR>Another name of <i>ye.ru.sha.laim</i> (יְרוּשָׁלִַ֫ם, יְרוּשְׁלֵם Jerusalem H3389)"
+    "gloss": "devastation",
+    "definition": "devastation, waste, desolation<BR>Also means: <i>shi.me.mah</i> (שִֽׁמְמָה desolation H8077B)"
   },
   "H8077b": {
     "source": "stepbible-tbesh",
