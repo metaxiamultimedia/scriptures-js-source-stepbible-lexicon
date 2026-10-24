@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { isPrimaryMeaning, isNameHomograph, ownLetteredRow, selectEntry } from './import.js';
+import { isPrimaryMeaning, isNameHomograph, isNameMeaningStub, ownLetteredRow, selectEntry } from './import.js';
 import type { LexiconEntry } from '@metaxia/scriptures-core';
 import { parseLemma, lookupTransliteration } from '../src/source.js';
 
@@ -87,6 +87,17 @@ describe('selectEntry', () => {
     expect(selectEntry(h1004b).gloss).toBe('house: home');
   });
 
+  it('passes over an own row that is only a name-meaning stub', () => {
+    // TBESH rows for H5483b: H5483B is the Horse Gate, H5483M the noun.
+    const h5483b = [
+      { ...row('H5483B', 'סוּס', 'Horse (Gate)'), strongsExtended: 'H5483b', definition: '<BR> This name means horse' },
+      { ...row('H5483M', 'סוּס', 'horse'), strongsExtended: 'H5483b', definition: '1) horse<br>1a) chariot horses' },
+    ];
+    expect(isNameMeaningStub(h5483b[0])).toBe(true);
+    expect(isNameMeaningStub(h5483b[1])).toBe(false);
+    expect(selectEntry(h5483b).gloss).toBe('horse');
+  });
+
   it('does not take an annotated own row ("a Meaning of")', () => {
     const rows = [
       { ...row('H2428G', 'חַ֫יִל', 'strength'), strongsExtended: 'H2428a' },
@@ -140,6 +151,11 @@ describe('imported lexicon data - primary meaning prioritization', () => {
     expect(data['H1004b'].gloss).toBe('house: home');
     expect(data['H5971a'].gloss).toBe('people');
     expect(data['H1121a'].gloss).toBe('son: child');
+
+    // A name-meaning stub never stands for the noun
+    expect(data['H5483b'].gloss).toBe('horse');
+    expect(data['H5483a'].gloss).toBe('swallow');
+    expect(data['H8577b'].gloss).toBe('serpent: snake');
   });
 
   it('TBESH entries with primary meanings have G suffix in disambiguated field', async () => {

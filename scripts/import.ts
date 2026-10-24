@@ -132,16 +132,34 @@ export function ownLetteredRow(rows: LexiconEntry[]): LexiconEntry | undefined {
 }
 
 /**
+ * True for a row whose definition is only STEPBible's note for a name built
+ * from the word ("This name means horse"). Under H5483b the own row H5483B is
+ * the Horse Gate with that note; the noun "horse" is the row H5483M.
+ */
+export function isNameMeaningStub(row: LexiconEntry): boolean {
+  return /^\s*(<br\s*\/?>\s*)*This name means\b/i.test(row.definition ?? '');
+}
+
+function isPlainRow(row: LexiconEntry): boolean {
+  return /^[HG]\d+[A-Za-z]*$/.test(row.strongsDisambiguated?.replace(/\s*=\s*$/, '').trim() ?? '');
+}
+
+/**
  * Pick the one entry stored for an extended Strong's number from all of its
  * TBESH/TBESG rows (in file order).
  *
  * A lettered number (H1004b) takes its own plain row (ownLetteredRow) when it
- * has one. Otherwise the first primary-meaning row (G suffix in dStrong) wins,
+ * has one, unless that row is a name-meaning stub (isNameMeaningStub) and
+ * another plain row exists, which is then taken instead. Otherwise the first primary-meaning row (G suffix in dStrong) wins,
  * else the first row. A proper-name homograph (isNameHomograph) is passed over
  * when another row exists.
  */
 export function selectEntry(rows: LexiconEntry[]): LexiconEntry {
   const own = ownLetteredRow(rows);
+  if (own && isNameMeaningStub(own)) {
+    const plain = rows.find((row) => row !== own && isPlainRow(row) && !isNameMeaningStub(row));
+    if (plain) return plain;
+  }
   if (own) return own;
   const candidates = rows.filter((row) => !isNameHomograph(row, rows));
   const pool = candidates.length > 0 ? candidates : rows;
