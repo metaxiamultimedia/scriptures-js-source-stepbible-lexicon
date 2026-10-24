@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { isPrimaryMeaning, isNameHomograph, selectEntry } from './import.js';
+import { isPrimaryMeaning, isNameHomograph, ownLetteredRow, selectEntry } from './import.js';
 import type { LexiconEntry } from '@metaxia/scriptures-core';
 import { parseLemma, lookupTransliteration } from '../src/source.js';
 
@@ -77,6 +77,25 @@ describe('selectEntry', () => {
     expect(selectEntry(only).gloss).toBe('Heglam');
   });
 
+  it('takes a lettered number\'s own plain row over its G row', () => {
+    // TBESH rows for H1004b, in file order.
+    const h1004b = [
+      { ...row('H1004G', 'בַּיִת', 'Beth-(ashbea)'), strongsExtended: 'H1004b' },
+      { ...row('H1004B', 'בַּיִת', 'house: home'), strongsExtended: 'H1004b' },
+    ];
+    expect(ownLetteredRow(h1004b)?.gloss).toBe('house: home');
+    expect(selectEntry(h1004b).gloss).toBe('house: home');
+  });
+
+  it('does not take an annotated own row ("a Meaning of")', () => {
+    const rows = [
+      { ...row('H2428G', 'חַ֫יִל', 'strength'), strongsExtended: 'H2428a' },
+      { ...row('H2428A = a Meaning of', 'חַ֫יִל', 'strength: soldiers'), strongsExtended: 'H2428a' },
+    ];
+    expect(ownLetteredRow(rows)).toBeUndefined();
+    expect(selectEntry(rows).gloss).toBe('strength');
+  });
+
   it('prefers the first primary (G) row, else the first row', () => {
     const rows = [row('H7225H = a Meaning of', 'רֵאשִׁית', 'first: best'), row('H7225G', 'רֵאשִׁית', 'first: beginning')];
     expect(selectEntry(rows).gloss).toBe('first: beginning');
@@ -116,6 +135,11 @@ describe('imported lexicon data - primary meaning prioritization', () => {
 
     // H8077a (shemamah) should be "devastation", not the name "Desolate"
     expect(data['H8077a'].gloss).toBe('devastation');
+
+    // Lettered numbers take their own row, not a name filed first under G
+    expect(data['H1004b'].gloss).toBe('house: home');
+    expect(data['H5971a'].gloss).toBe('people');
+    expect(data['H1121a'].gloss).toBe('son: child');
   });
 
   it('TBESH entries with primary meanings have G suffix in disambiguated field', async () => {

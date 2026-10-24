@@ -119,14 +119,30 @@ export function isNameHomograph(row: LexiconEntry, rows: LexiconEntry[]): boolea
 }
 
 /**
+ * The row that is the lettered number's own plain entry: dStrong is the
+ * extended number upper-cased with no annotation ("H1004B" or "H1004B =" for
+ * H1004b), not "a Meaning of"/"a Part of" another row. Under H1004b the G row
+ * is the place name Beth-(ashbea) and H1004B is "house: home".
+ */
+export function ownLetteredRow(rows: LexiconEntry[]): LexiconEntry | undefined {
+  const eStrong = rows[0]?.strongsExtended ?? '';
+  if (!/^[HG]\d+[a-z]$/.test(eStrong)) return undefined;
+  const own = eStrong.toUpperCase();
+  return rows.find((row) => row.strongsDisambiguated?.replace(/\s*=\s*$/, '').trim() === own);
+}
+
+/**
  * Pick the one entry stored for an extended Strong's number from all of its
  * TBESH/TBESG rows (in file order).
  *
- * The first primary-meaning row (G suffix in dStrong) wins, else the first
- * row. A proper-name homograph (isNameHomograph) is passed over when another
- * row exists.
+ * A lettered number (H1004b) takes its own plain row (ownLetteredRow) when it
+ * has one. Otherwise the first primary-meaning row (G suffix in dStrong) wins,
+ * else the first row. A proper-name homograph (isNameHomograph) is passed over
+ * when another row exists.
  */
 export function selectEntry(rows: LexiconEntry[]): LexiconEntry {
+  const own = ownLetteredRow(rows);
+  if (own) return own;
   const candidates = rows.filter((row) => !isNameHomograph(row, rows));
   const pool = candidates.length > 0 ? candidates : rows;
   return pool.find((row) => isPrimaryMeaning(row.strongsDisambiguated)) ?? pool[0];
