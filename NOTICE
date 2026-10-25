@@ -1,0 +1,18 @@
+@metaxia/scriptures-source-stepbible-lexicon
+
+This package includes lexicon data from STEPBible.org:
+
+  TBESH - Translators Brief lexicon of Extended Strongs for Hebrew
+  TBESG - Translators Brief lexicon of Extended Strongs for Greek
+  TFLSJ - Translators Formatted full LSJ Bible lexicon
+
+Data created by www.STEPBible.org based on work at Tyndale House Cambridge,
+licensed under the Creative Commons Attribution 4.0 International License
+(CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+Source: https://github.com/STEPBible/STEPBible-Data
+(commit 52607753604a9a650b9ae62da8d069a8312eb99a)
+
+Changes: the tab-separated files are converted to JSON. In the *-rows.json
+files each row is keyed by its dStrong, each column is trimmed of surrounding
+whitespace, and the dStrong column is split into the tag and its relation note
+("a Name of", "a Meaning of", ...). No row is removed or edited.

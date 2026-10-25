@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFile } from 'fs/promises';
 import type { LexiconEntry, LexiconMetadata, LexiconSource } from '@metaxia/scriptures-core';
+import type { LexiconRow } from './types.js';
 
 // Resolve paths relative to this file
 const __filename = fileURLToPath(import.meta.url);
@@ -52,8 +53,8 @@ export const metadata: Record<string, LexiconMetadata> = {
 };
 
 /**
- * Cache for loaded lexicon data.
- * Maps lexicon ID -> Strong's number -> LexiconEntry
+ * Cache for the deprecated eStrong-keyed lexicon data.
+ * Maps lexicon ID -> extended Strong's number -> LexiconEntry
  */
 const cache: Map<string, Map<string, LexiconEntry>> = new Map();
 
@@ -64,7 +65,8 @@ const cache: Map<string, Map<string, LexiconEntry>> = new Map();
 const lemmaCache: Map<string, Map<string, LexiconEntry[]>> = new Map();
 
 /**
- * Load lexicon data from JSON file.
+ * Load the deprecated eStrong-keyed lexicon data (one entry per eStrong, frozen
+ * at the 2.1.3 import). Use the dStrong-keyed rows (lookupDStrong) instead.
  */
 async function loadLexiconData(lexiconId: string): Promise<Map<string, LexiconEntry>> {
   if (cache.has(lexiconId)) {
@@ -108,6 +110,11 @@ function createLexiconSource(lexiconId: string): LexiconSource {
     metadata: meta,
     dataPath: DATA_PATH,
 
+    /**
+     * @deprecated Looks up one entry per extended Strong's number (eStrong) from
+     * the eStrong-keyed file frozen at 2.1.3. An eStrong can name several
+     * STEPBible rows; use lookupDStrong() with the word's dStrong instead.
+     */
     async lookupStrongs(strongsNumber: string): Promise<LexiconEntry | undefined> {
       const data = await loadLexiconData(lexiconId);
       return data.get(strongsNumber);
@@ -136,6 +143,63 @@ function createLexiconSource(lexiconId: string): LexiconSource {
       return results;
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Every TBESH/TBESG row, keyed by its exact dStrong
+// ---------------------------------------------------------------------------
+
+/** Lexicons whose rows are available keyed by dStrong. */
+export type RowLexiconId = 'stepbible-tbesh' | 'stepbible-tbesg';
+
+const rowsCache: Map<RowLexiconId, Record<string, LexiconRow>> = new Map();
+
+/**
+ * All rows of TBESH ("stepbible-tbesh", Hebrew) or TBESG ("stepbible-tbesg",
+ * Greek), keyed by dStrong, in STEPBible's file order.
+ */
+export async function loadRows(lexiconId: RowLexiconId): Promise<Record<string, LexiconRow>> {
+  const cached = rowsCache.get(lexiconId);
+  if (cached) return cached;
+  const content = await readFile(join(DATA_PATH, `${lexiconId}-rows.json`), 'utf-8');
+  const rows: Record<string, LexiconRow> = JSON.parse(content);
+  rowsCache.set(lexiconId, rows);
+  return rows;
+}
+
+function rowLexiconFor(tag: string): RowLexiconId {
+  if (tag.startsWith('H')) return 'stepbible-tbesh';
+  if (tag.startsWith('G')) return 'stepbible-tbesg';
+  throw new Error(`Not a Hebrew (H) or Greek (G) Strong's tag: ${tag}`);
+}
+
+/**
+ * The TBESH/TBESG row for an exact dStrong, e.g. "H1540H" (to reveal: reveal),
+ * "H5483M" (horse), "H9005" (to/for). The tag is matched exactly as STEPBible
+ * writes it (four digits, upper-case disambiguation letters); no other row is
+ * substituted when it is missing.
+ */
+export async function lookupDStrong(dStrong: string): Promise<LexiconRow | undefined> {
+  const rows = await loadRows(rowLexiconFor(dStrong));
+  return rows[dStrong];
+}
+
+/**
+ * Every row that maps to an extended Strong's number (eStrong), in file order.
+ * E.g. "H5483b" -> [H5483B (Horse (Gate)), H5483M (horse)].
+ */
+export async function rowsForEStrong(eStrong: string): Promise<LexiconRow[]> {
+  const rows = await loadRows(rowLexiconFor(eStrong));
+  return Object.values(rows).filter((row) => row.strongsExtended === eStrong);
+}
+
+/**
+ * Every row whose simple Strong's number (sStrong: digits only) is the given
+ * one, in file order. E.g. "H5483" -> [H5483A, H5483B, H5483M].
+ */
+export async function rowsForSStrong(sStrong: string): Promise<LexiconRow[]> {
+  const rows = await loadRows(rowLexiconFor(sStrong));
+  return Object.values(rows).filter((row) => row.strongsSimple === sStrong);
 }
 
 /**

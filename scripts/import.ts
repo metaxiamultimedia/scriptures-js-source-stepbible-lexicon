@@ -1,7 +1,15 @@
 /**
  * Import script for STEPBible lexicon data.
  *
- * Downloads TSV files from GitHub and converts to JSON format.
+ * Downloads the TBESH and TBESG TSV files from STEPBible-Data at a pinned commit
+ * and writes every row, keyed by its exact disambiguated Strong's number
+ * (dStrong), to data/stepbible-tbesh-rows.json and data/stepbible-tbesg-rows.json.
+ * No row is chosen over another: STEPBible tags each word with a dStrong (TAHOT,
+ * TAGNT), and the dStrong names exactly one row.
+ *
+ * The eStrong-keyed files (stepbible-tbesh.json, stepbible-tbesg.json,
+ * stepbible-tflsj.json) are deprecated and are no longer written by this script.
+ * They stay in the package unchanged from 2.1.3 for existing consumers.
  *
  * Usage: npm run import
  */
@@ -9,7 +17,7 @@
 import { mkdir, writeFile, readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import type { LexiconEntry } from '@metaxia/scriptures-core';
+import type { LexiconRow } from '../src/types.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,7 +29,7 @@ const SOURCE_DIR = join(ROOT_DIR, 'source');
  * STEPBible-Data commit hash for reproducible imports.
  * Update this when upgrading to a newer version of the data.
  */
-const STEPBIBLE_COMMIT = '52607753604a9a650b9ae62da8d069a8312eb99a';
+export const STEPBIBLE_COMMIT = '52607753604a9a650b9ae62da8d069a8312eb99a';
 
 /**
  * Base URL for raw file access at pinned commit.
@@ -29,28 +37,20 @@ const STEPBIBLE_COMMIT = '52607753604a9a650b9ae62da8d069a8312eb99a';
 const BASE_URL = `https://raw.githubusercontent.com/STEPBible/STEPBible-Data/${STEPBIBLE_COMMIT}/Lexicons`;
 
 /**
- * STEPBible lexicon file definitions.
+ * STEPBible lexicons whose rows are exported keyed by dStrong.
  */
-const LEXICONS = [
+export const LEXICONS = [
   {
     id: 'stepbible-tbesh',
-    language: 'hebrew' as const,
     filename: 'TBESH - Translators Brief lexicon of Extended Strongs for Hebrew - STEPBible.org CC BY.txt',
     url: `${BASE_URL}/TBESH%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Hebrew%20-%20STEPBible.org%20CC%20BY.txt`,
   },
   {
     id: 'stepbible-tbesg',
-    language: 'greek' as const,
     filename: 'TBESG - Translators Brief lexicon of Extended Strongs for Greek - STEPBible.org CC BY.txt',
     url: `${BASE_URL}/TBESG%20-%20Translators%20Brief%20lexicon%20of%20Extended%20Strongs%20for%20Greek%20-%20STEPBible.org%20CC%20BY.txt`,
   },
-  {
-    id: 'stepbible-tflsj',
-    language: 'greek' as const,
-    filename: 'TFLSJ  0-5624 - Translators Formatted full LSJ Bible lexicon - STEPBible.org CC BY.txt',
-    url: `${BASE_URL}/TFLSJ%20%200-5624%20-%20Translators%20Formatted%20full%20LSJ%20Bible%20lexicon%20-%20STEPBible.org%20CC%20BY.txt`,
-  },
-];
+] as const;
 
 /**
  * Download a file from URL.
@@ -69,196 +69,80 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
 }
 
 /**
- * Parse a TSV line, handling quoted fields.
+ * Split STEPBible's dStrong column into the tag and its relation note.
+ * "H1540G = a Name of" -> { dStrong: "H1540G", relation: "a Name of" }
+ * "H1540H ="           -> { dStrong: "H1540H", relation: undefined }
  */
-function parseTsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let current = '';
-  let inQuotes = false;
+export function splitDStrongField(field: string): { dStrong: string; relation?: string } {
+  const eq = field.indexOf('=');
+  if (eq === -1) return { dStrong: field.trim() };
+  const relation = field.slice(eq + 1).trim();
+  return { dStrong: field.slice(0, eq).trim(), relation: relation || undefined };
+}
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+/**
+ * Simple Strong's number (sStrong): the Strong's number with every letter after
+ * the digits removed, as STEPBible defines it (TinyURL.com/UpgradingTags).
+ * "H1540H" -> "H1540", "H1984b" -> "H1984", "G0026G" -> "G0026".
+ */
+export function simpleStrong(tag: string): string {
+  const match = /^([HG]\d+)/.exec(tag);
+  return match ? match[1] : tag;
+}
 
-    if (char === '"') {
-      inQuotes = !inQuotes;
-    } else if (char === '\t' && !inQuotes) {
-      fields.push(current.trim());
-      current = '';
-    } else {
-      current += char;
+/**
+ * Parse one TBESH/TBESG data line. Columns (STEPBible header line):
+ * eStrong#, dStrong, uStrong, Hebrew/Greek, Transliteration, Morph, Gloss, Meaning.
+ * Fields are split on tabs and kept as STEPBible wrote them, trimmed of
+ * surrounding whitespace. Returns undefined for a line that is not a data row.
+ */
+export function parseRow(line: string, lexiconId: string): LexiconRow | undefined {
+  const fields = line.replace(/\r$/, '').split('\t');
+  if (fields.length < 7) return undefined;
+  const eStrong = fields[0].trim();
+  if (!/^[HG]\d+[A-Za-z]*$/.test(eStrong)) return undefined;
+  const { dStrong, relation } = splitDStrongField(fields[1]);
+  if (!/^[HG]\d+[A-Za-z]*$/.test(dStrong)) return undefined;
+  const opt = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
+  };
+  return {
+    source: lexiconId,
+    strongsDisambiguated: dStrong,
+    strongsExtended: eStrong,
+    strongsSimple: simpleStrong(dStrong),
+    strongsUnified: opt(fields[2]),
+    relation,
+    lemma: fields[3]?.trim() ?? '',
+    transliteration: opt(fields[4]),
+    morphology: opt(fields[5]),
+    gloss: opt(fields[6]),
+    definition: opt(fields[7]),
+  };
+}
+
+/**
+ * Parse a STEPBible lexicon TSV into all of its rows, keyed by dStrong, in file
+ * order. Throws if a dStrong occurs twice (STEPBible defines each one once).
+ */
+export function parseLexiconRows(content: string, lexiconId: string): Record<string, LexiconRow> {
+  const rows: Record<string, LexiconRow> = {};
+  for (const line of content.split('\n')) {
+    const row = parseRow(line, lexiconId);
+    if (!row) continue;
+    if (rows[row.strongsDisambiguated]) {
+      throw new Error(`${lexiconId}: dStrong ${row.strongsDisambiguated} occurs more than once`);
     }
+    rows[row.strongsDisambiguated] = row;
   }
-
-  fields.push(current.trim());
-  return fields;
-}
-
-/**
- * Check if a disambiguated Strong's number has a "G" suffix (primary meaning).
- * Examples: "H0430G = a Name of" -> true, "H0430H = a Part of" -> false
- */
-export function isPrimaryMeaning(dStrong: string | undefined): boolean {
-  if (!dStrong) return false;
-  // Match pattern like "H0430G" or "G0025G" - number followed by "G"
-  // The "G" suffix indicates the primary/general meaning in STEPBible data
-  return /^[HG]\d+[a-z]*G\b/i.test(dStrong);
-}
-
-/**
- * True when a row is a proper name spelled differently from every other row
- * of the same extended Strong's number: a name homograph filed under another
- * lexeme. TBESH files the name Heglam (הֶגְלָם, "H1540G = a Name of", unified
- * H1617J) under H1540 next to the verb galah (גָּלָה, H1540H-K). The G suffix
- * is only the first letter of STEPBible's disambiguation series, not a mark of
- * the main sense, so the name must not stand for the number.
- */
-export function isNameHomograph(row: LexiconEntry, rows: LexiconEntry[]): boolean {
-  if (rows.length < 2) return false;
-  if (!/=\s*a Name of\b/i.test(row.strongsDisambiguated ?? '')) return false;
-  return rows.every((other) => other === row || other.lemma !== row.lemma);
-}
-
-/**
- * The row that is the lettered number's own plain entry: dStrong is the
- * extended number upper-cased with no annotation ("H1004B" or "H1004B =" for
- * H1004b), not "a Meaning of"/"a Part of" another row. Under H1004b the G row
- * is the place name Beth-(ashbea) and H1004B is "house: home".
- */
-export function ownLetteredRow(rows: LexiconEntry[]): LexiconEntry | undefined {
-  const eStrong = rows[0]?.strongsExtended ?? '';
-  if (!/^[HG]\d+[a-z]$/.test(eStrong)) return undefined;
-  const own = eStrong.toUpperCase();
-  return rows.find((row) => row.strongsDisambiguated?.replace(/\s*=\s*$/, '').trim() === own);
-}
-
-/**
- * True for a row whose definition is only STEPBible's note for a name built
- * from the word ("This name means horse"). Under H5483b the own row H5483B is
- * the Horse Gate with that note; the noun "horse" is the row H5483M.
- */
-export function isNameMeaningStub(row: LexiconEntry): boolean {
-  return /^\s*(<br\s*\/?>\s*)*This name means\b/i.test(row.definition ?? '');
-}
-
-function isPlainRow(row: LexiconEntry): boolean {
-  return /^[HG]\d+[A-Za-z]*$/.test(row.strongsDisambiguated?.replace(/\s*=\s*$/, '').trim() ?? '');
-}
-
-/**
- * Pick the one entry stored for an extended Strong's number from all of its
- * TBESH/TBESG rows (in file order).
- *
- * A lettered number (H1004b) takes its own plain row (ownLetteredRow) when it
- * has one, unless that row is a name-meaning stub (isNameMeaningStub) and
- * another plain row exists, which is then taken instead. Otherwise the first primary-meaning row (G suffix in dStrong) wins,
- * else the first row. A proper-name homograph (isNameHomograph) is passed over
- * when another row exists.
- */
-export function selectEntry(rows: LexiconEntry[]): LexiconEntry {
-  const own = ownLetteredRow(rows);
-  if (own && isNameMeaningStub(own)) {
-    const plain = rows.find((row) => row !== own && isPlainRow(row) && !isNameMeaningStub(row));
-    if (plain) return plain;
-  }
-  if (own) return own;
-  const candidates = rows.filter((row) => !isNameHomograph(row, rows));
-  const pool = candidates.length > 0 ? candidates : rows;
-  return pool.find((row) => isPrimaryMeaning(row.strongsDisambiguated)) ?? pool[0];
-}
-
-/**
- * Parse STEPBible TSV file into lexicon entries.
- *
- * TSV columns (may vary slightly by file):
- * 0: eStrong# (Extended Strong's)
- * 1: dStrong# (Disambiguated)
- * 2: uStrong# (Unified)
- * 3: Hebrew/Greek text
- * 4: Transliteration
- * 5: Morph (grammatical info)
- * 6: Gloss (brief meaning)
- * 7: Meaning (full definition)
- */
-function parseLexiconTsv(
-  content: string,
-  lexiconId: string
-): Record<string, LexiconEntry> {
-  const entries: Record<string, LexiconEntry> = {};
-  const groups: Record<string, LexiconEntry[]> = {};
-  const lines = content.split('\n');
-
-  let dataStarted = false;
-  let headerLine = '';
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    // Look for the header line (contains column names)
-    if (!dataStarted) {
-      if (
-        trimmed.includes('eStrong') ||
-        trimmed.includes('Strong') ||
-        trimmed.includes('Hebrew') ||
-        trimmed.includes('Greek')
-      ) {
-        headerLine = trimmed;
-        dataStarted = true;
-        continue;
-      }
-      // Skip preamble text
-      continue;
-    }
-
-    // Parse data line
-    const fields = parseTsvLine(trimmed);
-
-    // Need at least: eStrong, dStrong, uStrong, lemma, translit, morph, gloss
-    if (fields.length < 7) {
-      continue;
-    }
-
-    // Skip if first field doesn't look like a Strong's number
-    const eStrong = fields[0];
-    if (!eStrong.match(/^[HG]\d+/)) {
-      continue;
-    }
-
-    const entry: LexiconEntry = {
-      source: lexiconId,
-      strongsExtended: eStrong,
-      strongsDisambiguated: fields[1] || undefined,
-      strongsUnified: fields[2] || undefined,
-      lemma: fields[3] || '',
-      transliteration: fields[4] || undefined,
-      morphology: fields[5] || undefined,
-      gloss: fields[6] || undefined,
-      definition: fields[7] || undefined,
-    };
-
-    // Clean up "=" suffixes in disambiguated numbers (e.g., "G0025 =" -> "G0025")
-    if (entry.strongsDisambiguated) {
-      entry.strongsDisambiguated = entry.strongsDisambiguated.replace(/\s*=\s*$/, '').trim();
-    }
-
-    (groups[eStrong] ||= []).push(entry);
-  }
-
-  for (const [eStrong, rows] of Object.entries(groups)) {
-    entries[eStrong] = selectEntry(rows);
-  }
-
-  return entries;
+  return rows;
 }
 
 /**
  * Import a single lexicon.
  */
-async function importLexicon(lexicon: typeof LEXICONS[0]): Promise<number> {
+async function importLexicon(lexicon: (typeof LEXICONS)[number]): Promise<number> {
   console.log(`\nImporting ${lexicon.id}...`);
 
   const sourcePath = join(SOURCE_DIR, lexicon.filename);
@@ -271,16 +155,14 @@ async function importLexicon(lexicon: typeof LEXICONS[0]): Promise<number> {
     await downloadFile(lexicon.url, sourcePath);
   }
 
-  // Parse TSV
   const content = await readFile(sourcePath, 'utf-8');
-  const entries = parseLexiconTsv(content, lexicon.id);
+  const rows = parseLexiconRows(content, lexicon.id);
 
-  const count = Object.keys(entries).length;
-  console.log(`  Parsed ${count} entries`);
+  const count = Object.keys(rows).length;
+  console.log(`  Parsed ${count} rows`);
 
-  // Write JSON
-  const outputPath = join(DATA_DIR, `${lexicon.id}.json`);
-  await writeFile(outputPath, JSON.stringify(entries, null, 2), 'utf-8');
+  const outputPath = join(DATA_DIR, `${lexicon.id}-rows.json`);
+  await writeFile(outputPath, JSON.stringify(rows, null, 2) + '\n', 'utf-8');
   console.log(`  Wrote ${outputPath}`);
 
   return count;
@@ -293,19 +175,16 @@ async function main(): Promise<void> {
   console.log('STEPBible Lexicon Import');
   console.log('========================\n');
 
-  // Create directories
   await mkdir(DATA_DIR, { recursive: true });
   await mkdir(SOURCE_DIR, { recursive: true });
 
-  let totalEntries = 0;
-
+  let total = 0;
   for (const lexicon of LEXICONS) {
-    const count = await importLexicon(lexicon);
-    totalEntries += count;
+    total += await importLexicon(lexicon);
   }
 
   console.log(`\n========================`);
-  console.log(`Total: ${totalEntries} entries across ${LEXICONS.length} lexicons`);
+  console.log(`Total: ${total} rows across ${LEXICONS.length} lexicons`);
   console.log('Done!');
 }
 

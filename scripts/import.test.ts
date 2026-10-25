@@ -1,197 +1,138 @@
 import { describe, it, expect } from 'vitest';
 import { readFile } from 'fs/promises';
+import { createHash } from 'crypto';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { isPrimaryMeaning, isNameHomograph, isNameMeaningStub, ownLetteredRow, selectEntry } from './import.js';
-import type { LexiconEntry } from '@metaxia/scriptures-core';
-import { parseLemma, lookupTransliteration } from '../src/source.js';
+import { parseRow, parseLexiconRows, splitDStrongField, simpleStrong } from './import.js';
+import { parseLemma, lookupTransliteration, lookupDStrong, rowsForEStrong, rowsForSStrong, loadRows } from '../src/source.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, '..', 'data');
 
-describe('isPrimaryMeaning', () => {
-  it('returns true for G suffix entries (primary meanings)', () => {
-    expect(isPrimaryMeaning('H0430G = a Name of')).toBe(true);
-    expect(isPrimaryMeaning('H7225G')).toBe(true);
-    expect(isPrimaryMeaning('G0025G')).toBe(true);
-    expect(isPrimaryMeaning('H6440G = a Meaning of')).toBe(true);
+// Data lines copied verbatim from TBESH at the pinned STEPBible-Data commit
+// (definitions shortened after the gloss column).
+const TBESH_H1540G = 'H1540\tH1540G = a Name of\tH1617J\tהֶגְלָם\tga.lah\tH:V\tHeglam\tA man of the tribe of Benjamin';
+const TBESH_H5483M = 'H5483b\tH5483M =\tH5483M\tסוּס\tsus\tH:N-M\thorse\t1) horse<br>1a) chariot horses';
+const TBESH_H9005 = 'H9005\tH9005 =\tH9005\t/ל\tl\tPrefix\tto/for\tPrefix lamed: to ';
+
+describe('splitDStrongField / simpleStrong', () => {
+  it('splits the dStrong from STEPBible\'s relation note', () => {
+    expect(splitDStrongField('H1540G = a Name of')).toEqual({ dStrong: 'H1540G', relation: 'a Name of' });
+    expect(splitDStrongField('H1540H =')).toEqual({ dStrong: 'H1540H', relation: undefined });
+    expect(splitDStrongField('G0018 =')).toEqual({ dStrong: 'G0018', relation: undefined });
   });
 
-  it('returns false for non-G suffix entries (secondary meanings)', () => {
-    expect(isPrimaryMeaning('H0430H = a Part of')).toBe(false);
-    expect(isPrimaryMeaning('H0430I = a Part of')).toBe(false);
-    expect(isPrimaryMeaning('H7225H = a Meaning of')).toBe(false);
-    expect(isPrimaryMeaning('G0032H = a Meaning of')).toBe(false);
-  });
-
-  it('returns false for undefined or empty input', () => {
-    expect(isPrimaryMeaning(undefined)).toBe(false);
-    expect(isPrimaryMeaning('')).toBe(false);
-  });
-
-  it('handles edge cases', () => {
-    // Just the Strong's number with G suffix
-    expect(isPrimaryMeaning('H0001G')).toBe(true);
-    // Lowercase should also work
-    expect(isPrimaryMeaning('h0001g')).toBe(true);
-    // Extended Strong's with letter before G
-    expect(isPrimaryMeaning('H7225aG')).toBe(true);
+  it('drops every letter after the digits', () => {
+    expect(simpleStrong('H1540H')).toBe('H1540');
+    expect(simpleStrong('H1984b')).toBe('H1984');
+    expect(simpleStrong('H9005')).toBe('H9005');
+    expect(simpleStrong('G0026G')).toBe('G0026');
   });
 });
 
-const row = (dStrong: string, lemma: string, gloss: string): LexiconEntry => ({
-  source: 'stepbible-tbesh',
-  strongsExtended: dStrong.slice(0, 5),
-  strongsDisambiguated: dStrong,
-  lemma,
-  gloss,
-});
-
-describe('selectEntry', () => {
-  // TBESH rows for H1540, in file order.
-  const h1540 = [
-    row('H1540G = a Name of', 'הֶגְלָם', 'Heglam'),
-    row('H1540H', 'גָּלָה', 'to reveal: reveal'),
-    row('H1540I = a Meaning of', 'גָּלָה', 'to reveal: uncover'),
-  ];
-
-  it('passes over a proper-name homograph spelled differently from the other rows', () => {
-    expect(isNameHomograph(h1540[0], h1540)).toBe(true);
-    expect(isNameHomograph(h1540[1], h1540)).toBe(false);
-    expect(selectEntry(h1540).gloss).toBe('to reveal: reveal');
+describe('parseRow', () => {
+  it('keeps every column of a TBESH row', () => {
+    expect(parseRow(TBESH_H1540G, 'stepbible-tbesh')).toEqual({
+      source: 'stepbible-tbesh',
+      strongsDisambiguated: 'H1540G',
+      strongsExtended: 'H1540',
+      strongsSimple: 'H1540',
+      strongsUnified: 'H1617J',
+      relation: 'a Name of',
+      lemma: 'הֶגְלָם',
+      transliteration: 'ga.lah',
+      morphology: 'H:V',
+      gloss: 'Heglam',
+      definition: 'A man of the tribe of Benjamin',
+    });
+    expect(parseRow(TBESH_H9005, 'stepbible-tbesh')?.definition).toBe('Prefix lamed: to');
   });
 
-  it('keeps a name row that shares its spelling with the other rows', () => {
-    // H0430: "God" is "a Name of" H3068G but spelled like the other rows.
-    const h0430 = [
-      row('H0430G = a Name of', 'אֱלֹהִים', 'God'),
-      row('H0430H = a Part of', 'אֱלֹהִים', '(LORD)-Elohe'),
-    ];
-    expect(isNameHomograph(h0430[0], h0430)).toBe(false);
-    expect(selectEntry(h0430).gloss).toBe('God');
+  it('skips lines that are not data rows', () => {
+    expect(parseRow('eStrong#\tdStrong\tuStrong\tHebrew\tTransliteration\tMorph\tGloss\tMeaning', 'x')).toBeUndefined();
+    expect(parseRow('', 'x')).toBeUndefined();
+    expect(parseRow('H0001\tonly two', 'x')).toBeUndefined();
   });
 
-  it('keeps a lone name row', () => {
-    const only = [row('H1540G = a Name of', 'הֶגְלָם', 'Heglam')];
-    expect(selectEntry(only).gloss).toBe('Heglam');
-  });
-
-  it('takes a lettered number\'s own plain row over its G row', () => {
-    // TBESH rows for H1004b, in file order.
-    const h1004b = [
-      { ...row('H1004G', 'בַּיִת', 'Beth-(ashbea)'), strongsExtended: 'H1004b' },
-      { ...row('H1004B', 'בַּיִת', 'house: home'), strongsExtended: 'H1004b' },
-    ];
-    expect(ownLetteredRow(h1004b)?.gloss).toBe('house: home');
-    expect(selectEntry(h1004b).gloss).toBe('house: home');
-  });
-
-  it('passes over an own row that is only a name-meaning stub', () => {
-    // TBESH rows for H5483b: H5483B is the Horse Gate, H5483M the noun.
-    const h5483b = [
-      { ...row('H5483B', 'סוּס', 'Horse (Gate)'), strongsExtended: 'H5483b', definition: '<BR> This name means horse' },
-      { ...row('H5483M', 'סוּס', 'horse'), strongsExtended: 'H5483b', definition: '1) horse<br>1a) chariot horses' },
-    ];
-    expect(isNameMeaningStub(h5483b[0])).toBe(true);
-    expect(isNameMeaningStub(h5483b[1])).toBe(false);
-    expect(selectEntry(h5483b).gloss).toBe('horse');
-  });
-
-  it('does not take an annotated own row ("a Meaning of")', () => {
-    const rows = [
-      { ...row('H2428G', 'חַ֫יִל', 'strength'), strongsExtended: 'H2428a' },
-      { ...row('H2428A = a Meaning of', 'חַ֫יִל', 'strength: soldiers'), strongsExtended: 'H2428a' },
-    ];
-    expect(ownLetteredRow(rows)).toBeUndefined();
-    expect(selectEntry(rows).gloss).toBe('strength');
-  });
-
-  it('prefers the first primary (G) row, else the first row', () => {
-    const rows = [row('H7225H = a Meaning of', 'רֵאשִׁית', 'first: best'), row('H7225G', 'רֵאשִׁית', 'first: beginning')];
-    expect(selectEntry(rows).gloss).toBe('first: beginning');
-    expect(selectEntry([row('H0559', 'אָמַר', 'to say')]).gloss).toBe('to say');
+  it('keeps every row of an eStrong, keyed by dStrong, and rejects a repeated dStrong', () => {
+    const rows = parseLexiconRows([TBESH_H1540G, TBESH_H5483M, TBESH_H9005].join('\n'), 'stepbible-tbesh');
+    expect(Object.keys(rows)).toEqual(['H1540G', 'H5483M', 'H9005']);
+    expect(() => parseLexiconRows([TBESH_H9005, TBESH_H9005].join('\n'), 'stepbible-tbesh')).toThrow(/more than once/);
   });
 });
 
-describe('imported lexicon data - primary meaning prioritization', () => {
-  it('TBESH (Hebrew) has correct primary glosses for common words', async () => {
-    const content = await readFile(join(DATA_DIR, 'stepbible-tbesh.json'), 'utf-8');
-    const data = JSON.parse(content);
-
-    // H0430 (Elohim) should be "God", not "(Gibeath)-elohim"
-    expect(data['H0430']).toBeDefined();
-    expect(data['H0430'].gloss).toBe('God');
-    expect(data['H0430'].strongsDisambiguated).toMatch(/G/);
-
-    // H7225 (reshit) should be "first: beginning", not "first: best"
-    expect(data['H7225']).toBeDefined();
-    expect(data['H7225'].gloss).toBe('first: beginning');
-
-    // H6440 (panim) should be "face: before", not "face: kindness"
-    expect(data['H6440']).toBeDefined();
-    expect(data['H6440'].gloss).toBe('face: before');
-
-    // H4325 (mayim) should be "water", not "Water (Gate)"
-    expect(data['H4325']).toBeDefined();
-    expect(data['H4325'].gloss).toBe('water');
-
-    // H7200 (ra'ah) should be "to see: see", not "Provider"
-    expect(data['H7200']).toBeDefined();
-    expect(data['H7200'].gloss).toBe('to see: see');
-
-    // H1540 (galah) should be the verb, not the name homograph Heglam
-    expect(data['H1540'].gloss).toBe('to reveal: reveal');
-    expect(data['H1540'].lemma.normalize('NFC')).toBe('גָּלָה'.normalize('NFC'));
-
-    // H8077a (shemamah) should be "devastation", not the name "Desolate"
-    expect(data['H8077a'].gloss).toBe('devastation');
-
-    // Lettered numbers take their own row, not a name filed first under G
-    expect(data['H1004b'].gloss).toBe('house: home');
-    expect(data['H5971a'].gloss).toBe('people');
-    expect(data['H1121a'].gloss).toBe('son: child');
-
-    // A name-meaning stub never stands for the noun
-    expect(data['H5483b'].gloss).toBe('horse');
-    expect(data['H5483a'].gloss).toBe('swallow');
-    expect(data['H8577b'].gloss).toBe('serpent: snake');
-  });
-
-  it('TBESH entries with primary meanings have G suffix in disambiguated field', async () => {
-    const content = await readFile(join(DATA_DIR, 'stepbible-tbesh.json'), 'utf-8');
-    const data = JSON.parse(content);
-
-    // Sample check: common words should have G suffix
-    const commonWords = ['H0430', 'H7225', 'H6440', 'H4325', 'H7200', 'H0001', 'H3068'];
-
-    for (const strongs of commonWords) {
-      if (data[strongs]) {
-        const dStrong = data[strongs].strongsDisambiguated;
-        expect(
-          isPrimaryMeaning(dStrong),
-          `${strongs} should have primary meaning (G suffix), got: ${dStrong}`
-        ).toBe(true);
-      }
+describe('dStrong-keyed rows (STEPBible tags)', () => {
+  it('has every TBESH and TBESG row', async () => {
+    const tbesh = await loadRows('stepbible-tbesh');
+    const tbesg = await loadRows('stepbible-tbesg');
+    expect(Object.keys(tbesh)).toHaveLength(11682);
+    expect(Object.keys(tbesg)).toHaveLength(11035);
+    for (const [key, row] of [...Object.entries(tbesh), ...Object.entries(tbesg)]) {
+      expect(row.strongsDisambiguated).toBe(key);
     }
   });
 
-  it('TBESG (Greek) has correct primary glosses', async () => {
-    const content = await readFile(join(DATA_DIR, 'stepbible-tbesg.json'), 'utf-8');
-    const data = JSON.parse(content);
-
-    // G0025 (agapao) should be "to love"
-    expect(data['G0025']).toBeDefined();
-    expect(data['G0025'].gloss).toBe('to love');
-
-    // G0032 (angelos) should be "angel"
-    expect(data['G0032']).toBeDefined();
-    expect(data['G0032'].gloss).toBe('angel');
-
-    // G0165 (aion) should be "an age: age"
-    expect(data['G0165']).toBeDefined();
-    expect(data['G0165'].gloss).toBe('an age: age');
+  it('H1540: the name Heglam and the verb galah are separate rows', async () => {
+    const g = await lookupDStrong('H1540G');
+    expect(g?.gloss).toBe('Heglam');
+    expect(g?.relation).toBe('a Name of');
+    expect(g?.strongsUnified).toBe('H1617J');
+    expect(g?.strongsExtended).toBe('H1540');
+    const h = await lookupDStrong('H1540H');
+    expect(h?.gloss).toBe('to reveal: reveal');
+    expect(h?.lemma.normalize('NFC')).toBe('גָּלָה'.normalize('NFC'));
+    expect((await rowsForSStrong('H1540')).map((r) => r.strongsDisambiguated)).toEqual([
+      'H1540G', 'H1540H', 'H1540I', 'H1540J', 'H1540K',
+    ]);
   });
+
+  it('H5483: swallow (H5483a), Horse Gate and horse (both H5483b)', async () => {
+    expect((await lookupDStrong('H5483A'))?.gloss).toBe('swallow');
+    expect((await lookupDStrong('H5483A'))?.strongsExtended).toBe('H5483a');
+    expect((await lookupDStrong('H5483B'))?.gloss).toBe('Horse (Gate)');
+    expect((await lookupDStrong('H5483M'))?.gloss).toBe('horse');
+    expect((await rowsForEStrong('H5483b')).map((r) => r.strongsDisambiguated)).toEqual(['H5483B', 'H5483M']);
+    expect((await rowsForSStrong('H5483')).map((r) => r.strongsDisambiguated)).toEqual(['H5483A', 'H5483B', 'H5483M']);
+  });
+
+  it('H1984B, H9005, H9035', async () => {
+    const praise = await lookupDStrong('H1984B');
+    expect(praise?.gloss).toBe('to boast: praise');
+    expect(praise?.strongsExtended).toBe('H1984b');
+    expect((await lookupDStrong('H9005'))?.gloss).toBe('to/for');
+    expect((await lookupDStrong('H9005'))?.morphology).toBe('Prefix');
+    expect((await lookupDStrong('H9035'))?.gloss).toBe('us');
+  });
+
+  it('matches tags exactly and substitutes nothing', async () => {
+    expect(await lookupDStrong('H1540')).toBeUndefined();
+    expect(await lookupDStrong('H1540h')).toBeUndefined();
+    expect(await lookupDStrong('H5483b')).toBeUndefined();
+  });
+
+  it('Greek rows are keyed the same way', async () => {
+    const g = await lookupDStrong('G0018');
+    expect(g?.gloss).toBe('good');
+    expect(g?.strongsExtended).toBe('G0018');
+    expect(g?.source).toBe('stepbible-tbesg');
+  });
+});
+
+describe('deprecated eStrong-keyed files', () => {
+  // SHA-256 of the files published in 2.1.3. They are kept unchanged for
+  // existing consumers and are no longer written by the import.
+  const published = {
+    'stepbible-tbesh.json': '2c9346bb2a4224a4bd6072a510e93e03fc85d8e0a1550a6472cab8773a21576e',
+    'stepbible-tbesg.json': 'edcbae75d7b2d221953abcb4cd1ded5f2abf2d97b44ac69b29e7571ccb47b4c3',
+    'stepbible-tflsj.json': 'c21acfaa48089d1dc13a4aa9c6459f7cc73fa7daf32084ad4683e4754905a791',
+  };
+  for (const [file, sha] of Object.entries(published)) {
+    it(`${file} is byte-identical to 2.1.3`, async () => {
+      const content = await readFile(join(DATA_DIR, file));
+      expect(createHash('sha256').update(content).digest('hex')).toBe(sha);
+    });
+  }
 });
 
 describe('parseLemma', () => {
@@ -214,25 +155,21 @@ describe('parseLemma', () => {
 
 describe('lookupTransliteration', () => {
   it('returns transliteration for word without prefix', async () => {
-    const result = await lookupTransliteration('7225');
-    expect(result).toBe('re.shit');
+    expect(await lookupTransliteration('7225')).toBe('re.shit');
   });
 
   it('returns combined transliteration for word with prefix', async () => {
     // b/7225 = beth + reshit = "bre.shit"
-    const result = await lookupTransliteration('b/7225');
-    expect(result).toBe('bre.shit');
+    expect(await lookupTransliteration('b/7225')).toBe('bre.shit');
   });
 
   it('returns combined transliteration for word with article prefix', async () => {
     // d/8064 = article + shamayim = "hasha.ma.yim"
-    const result = await lookupTransliteration('d/8064');
-    expect(result).toBe('hasha.ma.yim');
+    expect(await lookupTransliteration('d/8064')).toBe('hasha.ma.yim');
   });
 
   it('returns combined transliteration for word with multiple prefixes', async () => {
     // c/853 = vav + et = "vet"
-    const result = await lookupTransliteration('c/853');
-    expect(result).toBe('vet');
+    expect(await lookupTransliteration('c/853')).toBe('vet');
   });
 });
